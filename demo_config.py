@@ -23,6 +23,9 @@ from dictionary_learning.trainers.matryoshka_batch_top_k import (
     MatryoshkaBatchTopKTrainer,
     MatryoshkaBatchTopKSAE,
 )
+from dictionary_learning.trainers.ndropout_batch_top_k import (
+    NDropoutBatchTopKTrainer,
+)
 from dictionary_learning.dictionary import (
     AutoEncoder,
     GatedAutoEncoder,
@@ -40,6 +43,7 @@ class TrainerType(Enum):
     P_ANNEAL = "p_anneal"
     JUMP_RELU = "jump_relu"
     Matryoshka_BATCH_TOP_K = "matryoshka_batch_top_k"
+    NDROPOUT_BATCH_TOP_K = "ndropout_batch_top_k"
 
 
 @dataclass
@@ -76,6 +80,9 @@ learning_rates = [3e-4]
 wandb_project = "qwen-32b-sweep"
 
 LLM_CONFIG = {
+    "EleutherAI/pythia-14m": LLMConfig(
+        llm_batch_size=128, context_length=1024, sae_batch_size=2048, dtype=t.float32
+    ),
     "EleutherAI/pythia-70m-deduped": LLMConfig(
         llm_batch_size=64, context_length=1024, sae_batch_size=2048, dtype=t.float32
     ),
@@ -202,6 +209,17 @@ class JumpReluTrainerConfig(BaseTrainerConfig):
     sparsity_warmup_steps: Optional[int]
     sparsity_penalty: float = 1.0
     bandwidth: float = 0.001
+
+
+@dataclass
+class NDropoutBatchTopKTrainerConfig(BaseTrainerConfig):
+    dict_size: int
+    seed: int
+    lr: float
+    k: int
+    auxk_alpha: float = 1 / 32
+    threshold_beta: float = 0.999
+    threshold_start_step: int = 1000
 
 
 def get_trainer_configs(
@@ -363,6 +381,22 @@ def get_trainer_configs(
                 seed=seed,
                 target_l0=target_l0,
                 wandb_name=f"JumpReluTrainer-{model_name}-{submodule_name}",
+            )
+            trainer_configs.append(asdict(config))
+
+    if TrainerType.NDROPOUT_BATCH_TOP_K.value in architectures:
+        for seed, dict_size, learning_rate, k in itertools.product(
+            seeds, dict_sizes, learning_rates, TARGET_L0s
+        ):
+            config = NDropoutBatchTopKTrainerConfig(
+                **base_config,
+                trainer=NDropoutBatchTopKTrainer,
+                dict_class=BatchTopKSAE,
+                lr=learning_rate,
+                dict_size=dict_size,
+                seed=seed,
+                k=k,
+                wandb_name=f"NDropoutBatchTopKTrainer-{model_name}-{submodule_name}",
             )
             trainer_configs.append(asdict(config))
 
