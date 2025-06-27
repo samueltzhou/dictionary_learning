@@ -249,13 +249,39 @@ class SeqDropoutBatchTopKTrainer(SAETrainer):
         self.optimizer.step()
         self.optimizer.zero_grad()
         self.scheduler.step()
-
-        # Re-normalise decoder rows to unit norm.
+        # Re-normalise decoder rows to unit norm using helper util
         self.ae.W_dec.data = set_decoder_norm_to_unit_norm(
             self.ae.W_dec.T, self.ae.activation_dim, self.ae.dict_size
         ).T
 
         return loss.item()
+
+    def pairwise_distances(self, x: t.Tensor, y: t.Tensor) -> t.Tensor:
+        """
+        Computes pairwise distances between two tensors.
+        x: tensor of shape (n, d)
+        y: tensor of shape (m, d)
+        """
+        x_norm = (x**2).sum(1).view(-1, 1)
+        y_norm = (y**2).sum(1).view(1, -1)
+        dist = x_norm + y_norm - 2.0 * t.mm(x, y.t())
+        return t.sqrt(t.clamp(dist, min=0.0))
+
+    def geometric_median(self, x: t.Tensor, max_iter: int = 100, tol: float = 1e-5) -> t.Tensor:
+        """
+        Computes the geometric median of a tensor.
+        x: tensor of shape (n, d)
+        """
+        median = x.mean(dim=0)
+        for _ in range(max_iter):
+            prev_median = median.clone()
+            distances = self.pairwise_distances(x, median.unsqueeze(0)).squeeze()
+            weights = 1.0 / t.clamp(distances, min=1e-6)
+            weights_sum = weights.sum()
+            median = (weights.unsqueeze(1) * x).sum(dim=0) / weights_sum
+            if t.norm(median - prev_median) < tol:
+                break
+        return median
 
     # ---------------------------------------------------------------------
     # Config dump for logging / checkpoint.
