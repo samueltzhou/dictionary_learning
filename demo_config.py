@@ -26,6 +26,9 @@ from dictionary_learning.trainers.matryoshka_batch_top_k import (
 from dictionary_learning.trainers.ndropout_batch_top_k import (
     NDropoutBatchTopKTrainer,
 )
+from dictionary_learning.trainers.seqdropout_batch_top_k import (
+    SeqDropoutBatchTopKTrainer,
+)
 from dictionary_learning.dictionary import (
     AutoEncoder,
     GatedAutoEncoder,
@@ -44,6 +47,7 @@ class TrainerType(Enum):
     JUMP_RELU = "jump_relu"
     Matryoshka_BATCH_TOP_K = "matryoshka_batch_top_k"
     NDROPOUT_BATCH_TOP_K = "ndropout_batch_top_k"
+    SEQ_DROPOUT_BATCH_TOP_K = "seqdropout_batch_top_k"
 
 
 @dataclass
@@ -222,6 +226,17 @@ class NDropoutBatchTopKTrainerConfig(BaseTrainerConfig):
     threshold_start_step: int = 1000
 
 
+@dataclass
+class SeqDropoutBatchTopKTrainerConfig(BaseTrainerConfig):
+    dict_size: int
+    seed: int
+    lr: float
+    k: int
+    auxk_alpha: float = 1 / 32
+    threshold_beta: float = 0.999
+    threshold_start_step: int = 1000
+
+
 def get_trainer_configs(
     architectures: list[str],
     learning_rates: list[float],
@@ -391,12 +406,28 @@ def get_trainer_configs(
             config = NDropoutBatchTopKTrainerConfig(
                 **base_config,
                 trainer=NDropoutBatchTopKTrainer,
-                dict_class=BatchTopKSAE,
+                dict_class=MatryoshkaBatchTopKSAE,
                 lr=learning_rate,
                 dict_size=dict_size,
                 seed=seed,
                 k=k,
                 wandb_name=f"NDropoutBatchTopKTrainer-{model_name}-{submodule_name}",
+            )
+            trainer_configs.append(asdict(config))
+
+    if TrainerType.SEQ_DROPOUT_BATCH_TOP_K.value in architectures:
+        for seed, dict_size, learning_rate, k in itertools.product(
+            seeds, dict_sizes, learning_rates, TARGET_L0s
+        ):
+            config = SeqDropoutBatchTopKTrainerConfig(
+                **base_config,
+                trainer=SeqDropoutBatchTopKTrainer,
+                dict_class=MatryoshkaBatchTopKSAE,
+                lr=learning_rate,
+                dict_size=dict_size,
+                seed=seed,
+                k=k,
+                wandb_name=f"SeqDropoutBatchTopKTrainer-{model_name}-{submodule_name}",
             )
             trainer_configs.append(asdict(config))
 
