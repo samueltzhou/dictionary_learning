@@ -267,21 +267,37 @@ class SeqDropoutBatchTopKTrainer(SAETrainer):
         dist = x_norm + y_norm - 2.0 * t.mm(x, y.t())
         return t.sqrt(t.clamp(dist, min=0.0))
 
-    def geometric_median(self, x: t.Tensor, max_iter: int = 100, tol: float = 1e-5) -> t.Tensor:
-        """
-        Computes the geometric median of a tensor.
-        x: tensor of shape (n, d)
-        """
-        median = x.mean(dim=0)
+    @staticmethod
+    def geometric_median(points: t.Tensor, max_iter: int = 100, tol: float = 1e-5):
+        guess = points.mean(dim=0)
+        prev = t.zeros_like(guess)
+        weights = t.ones(len(points), device=points.device)
+
         for _ in range(max_iter):
-            prev_median = median.clone()
-            distances = self.pairwise_distances(x, median.unsqueeze(0)).squeeze()
-            weights = 1.0 / t.clamp(distances, min=1e-6)
-            weights_sum = weights.sum()
-            median = (weights.unsqueeze(1) * x).sum(dim=0) / weights_sum
-            if t.norm(median - prev_median) < tol:
+            prev = guess
+            weights = 1 / t.norm(points - guess, dim=1)
+            weights /= weights.sum()
+            guess = (weights.unsqueeze(1) * points).sum(dim=0)
+            if t.norm(guess - prev) < tol:
                 break
-        return median
+
+        return guess
+    
+    # def geometric_median(self, x: t.Tensor, max_iter: int = 100, tol: float = 1e-5) -> t.Tensor:
+    #     """
+    #     Computes the geometric median of a tensor.
+    #     x: tensor of shape (n, d)
+    #     """
+    #     median = x.mean(dim=0)
+    #     for _ in range(max_iter):
+    #         prev_median = median.clone()
+    #         distances = self.pairwise_distances(x, median.unsqueeze(0)).squeeze()
+    #         weights = 1.0 / t.clamp(distances, min=1e-6)
+    #         weights_sum = weights.sum()
+    #         median = (weights.unsqueeze(1) * x).sum(dim=0) / weights_sum
+    #         if t.norm(median - prev_median) < tol:
+    #             break
+    #     return median
 
     # ---------------------------------------------------------------------
     # Config dump for logging / checkpoint.
